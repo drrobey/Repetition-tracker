@@ -412,6 +412,7 @@
           const [newTopicName, setNewTopicName] = useState('');
           const [heatmapYear, setHeatmapYear] = useState(2026);
           const [topicToDelete, setTopicToDelete] = useState(null);
+          const [subjectToDelete, setSubjectToDelete] = useState(null);
           const [isAddingSubject, setIsAddingSubject] = useState(false);
           const [newSubjectName, setNewSubjectName] = useState('');
           const [addedTopicId, setAddedTopicId] = useState(null);
@@ -611,6 +612,11 @@
           const [isDragging, setIsDragging] = useState(false);
           const [dragHoverIndex, setDragHoverIndex] = useState(null);
 
+          const dragSubjectItem = useRef(null);
+          const dragOverSubjectItem = useRef(null);
+          const [isDraggingSubject, setIsDraggingSubject] = useState(false);
+          const [dragHoverSubjectIndex, setDragHoverSubjectIndex] = useState(null);
+
           const handleDragStart = (e, index) => {
             dragItem.current = index;
             if (e.dataTransfer) {
@@ -647,6 +653,61 @@
             setDragHoverIndex(null);
             dragItem.current = null;
             dragOverItem.current = null;
+          };
+
+          const handleSubjectDragStart = (e, index) => {
+            dragSubjectItem.current = index;
+            if (e.dataTransfer) {
+              e.dataTransfer.effectAllowed = 'move';
+            }
+            setTimeout(() => setIsDraggingSubject(true), 0);
+          };
+
+          const handleSubjectDragEnter = (e, index) => {
+            e.preventDefault();
+            dragOverSubjectItem.current = index;
+            if (dragSubjectItem.current !== index) {
+              setDragHoverSubjectIndex(index);
+            }
+          };
+
+          const handleSubjectDragEnd = () => {
+            if (dragSubjectItem.current === null || dragOverSubjectItem.current === null) return;
+            if (dragSubjectItem.current === dragOverSubjectItem.current) {
+              setIsDraggingSubject(false);
+              setDragHoverSubjectIndex(null);
+              return;
+            }
+
+            const keys = Object.keys(trackerData);
+            const draggedKey = keys[dragSubjectItem.current];
+            
+            keys.splice(dragSubjectItem.current, 1);
+            keys.splice(dragOverSubjectItem.current, 0, draggedKey);
+
+            const newData = {};
+            keys.forEach(k => {
+              newData[k] = trackerData[k];
+            });
+
+            onUpdate({ ...module, data: newData });
+
+            setIsDraggingSubject(false);
+            setDragHoverSubjectIndex(null);
+            dragSubjectItem.current = null;
+            dragOverSubjectItem.current = null;
+          };
+
+          const handleDeleteSubject = (subject) => {
+            const newData = { ...trackerData };
+            delete newData[subject];
+            onUpdate({ ...module, data: newData });
+            
+            if (activeTab === subject) {
+              const remainingKeys = Object.keys(newData);
+              setActiveTab(remainingKeys.length > 0 ? remainingKeys[0] : null);
+            }
+            setSubjectToDelete(null);
           };
 
           const addNewTopic = (e) => {
@@ -833,19 +894,50 @@
                   </SpotlightCard>
 
                   <div className="flex flex-wrap items-center gap-2 mb-6 border-b border-slate-800 pb-px overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                    {Object.keys(trackerData).map(subject => (
-                      <button
-                        key={subject}
-                        onClick={() => setActiveTab(subject)}
-                        className={`interactive-pop px-4 py-2 text-sm font-semibold rounded-t-lg transition-all border-b-2 -mb-px whitespace-nowrap active:scale-95 ${
-                          activeTab === subject 
-                            ? 'text-teal-300 border-teal-400 bg-slate-800/80 shadow-[0_-2px_15px_rgba(20,184,166,0.15)]' 
-                            : 'text-slate-500 border-transparent hover:text-slate-400 hover:bg-slate-800/50'
-                        }`}
-                      >
-                        {subject}
-                      </button>
-                    ))}
+                    {Object.keys(trackerData).map((subject, index) => {
+                      const isDragged = isDraggingSubject && dragSubjectItem.current === index;
+                      const isHovered = isDraggingSubject && dragHoverSubjectIndex === index && dragSubjectItem.current !== index;
+                      const isMovingRight = dragSubjectItem.current !== null && dragSubjectItem.current < index;
+
+                      let tabClass = `interactive-pop px-4 py-2 text-sm font-semibold rounded-t-lg transition-all border-b-2 -mb-px whitespace-nowrap active:scale-95 group cursor-grab active:cursor-grabbing flex items-center gap-2 select-none `;
+                      
+                      if (activeTab === subject) {
+                        tabClass += 'text-teal-300 border-teal-400 bg-slate-800/80 shadow-[0_-2px_15px_rgba(20,184,166,0.15)] ';
+                      } else {
+                        tabClass += 'text-slate-500 border-transparent hover:text-slate-400 hover:bg-slate-800/50 ';
+                      }
+
+                      if (isDragged) tabClass += 'opacity-40 bg-slate-900 scale-[0.98] border border-dashed border-teal-500/50 z-0 ';
+                      if (isHovered) tabClass += 'bg-slate-800/80 z-20 ';
+
+                      let tabStyle = {};
+                      if (isHovered) {
+                        tabStyle = { transform: isMovingRight ? 'translateX(-6px)' : 'translateX(6px)' };
+                      }
+
+                      return (
+                        <div
+                          key={subject}
+                          draggable
+                          onDragStart={(e) => handleSubjectDragStart(e, index)}
+                          onDragEnter={(e) => handleSubjectDragEnter(e, index)}
+                          onDragEnd={handleSubjectDragEnd}
+                          onDragOver={(e) => e.preventDefault()}
+                          onClick={() => setActiveTab(subject)}
+                          className={tabClass}
+                          style={tabStyle}
+                        >
+                          {subject}
+                          <div 
+                            onClick={(e) => { e.stopPropagation(); setSubjectToDelete(subject); }}
+                            className="opacity-0 group-hover:opacity-100 p-1 -mr-2 text-slate-500 hover:text-rose-400 hover:bg-rose-500/20 rounded transition-all"
+                            title="Delete Subject"
+                          >
+                            <Icon name="Trash2" size={14} />
+                          </div>
+                        </div>
+                      );
+                    })}
                     <button 
                       onClick={() => setIsAddingSubject(true)}
                       className="interactive-pop px-3 py-2 text-slate-500 border-b-2 border-transparent hover:text-teal-400 hover:bg-slate-800/50 active:scale-95 rounded-t-lg transition-all -mb-px flex items-center gap-1"
@@ -1213,6 +1305,29 @@
                       </button>
                       <button 
                         onClick={() => deleteTopic(topicToDelete)}
+                        className="interactive-pop px-4 py-2 rounded-xl text-sm font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {subjectToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in-backdrop">
+                  <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-scale-up-modal">
+                    <h3 className="text-xl font-bold text-rose-500 mb-2">Delete Subject?</h3>
+                    <p className="text-slate-400 mb-6">Are you sure you want to remove <strong>{subjectToDelete}</strong>? This will permanently delete all topics inside it.</p>
+                    <div className="flex gap-3 justify-end">
+                      <button 
+                        onClick={() => setSubjectToDelete(null)}
+                        className="interactive-pop px-4 py-2 rounded-xl text-sm font-semibold text-slate-300 hover:bg-slate-800 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteSubject(subjectToDelete)}
                         className="interactive-pop px-4 py-2 rounded-xl text-sm font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30 transition-colors"
                       >
                         Delete
